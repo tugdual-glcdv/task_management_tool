@@ -215,207 +215,223 @@ tr:hover{background:#f3f4f6;}
 
 <script>
 
-let tasks=[];
-let currentSort={key:"id",asc:true};
+let tasks = [];
+let currentSort = { key: "id", asc: true };
+
+/* ================= LOCAL DATABASE ================= */
+
+function loadTasks(){
+  const data = localStorage.getItem("taskManagerDB");
+  tasks = data ? JSON.parse(data) : [];
+}
+
+function saveTasks(){
+  localStorage.setItem("taskManagerDB", JSON.stringify(tasks));
+}
+
+/* ================= UTIL ================= */
 
 function generateId(){
-return tasks.length?Math.max(...tasks.map(t=>t.id))+1:1;
+  return tasks.length ? Math.max(...tasks.map(t=>t.id)) + 1 : 1;
 }
 
 function isBlocked(task){
-if(!task.dependsOn) return false;
-const dep=tasks.find(t=>t.id===task.dependsOn);
-if(!dep) return false;
-return !(dep.state==="to test"||dep.state==="done");
+  if(!task.dependsOn) return false;
+  const dep = tasks.find(t=>t.id === task.dependsOn);
+  if(!dep) return false;
+  return !(dep.state === "to test" || dep.state === "done");
 }
 
 /* ================= RENDER ================= */
 
 function render(){
-renderTable();
-renderKanban();
-initDragDrop();
+  saveTasks(); // sauvegarde automatique
+  renderTable();
+  renderKanban();
+  initDragDrop();
 }
 
 function renderTable(){
-const tbody=document.getElementById("taskTable");
-tbody.innerHTML="";
+  const tbody = document.getElementById("taskTable");
+  tbody.innerHTML = "";
 
-let sorted=[...tasks].sort((a,b)=>{
-let va=a[currentSort.key]??"";
-let vb=b[currentSort.key]??"";
+  let sorted = [...tasks].sort((a,b)=>{
+    let va = a[currentSort.key] ?? "";
+    let vb = b[currentSort.key] ?? "";
 
-if(currentSort.key==="priority"){
-const order=["urgent","high","normal","none"];
-va=order.indexOf(va);
-vb=order.indexOf(vb);
-}
+    if(currentSort.key === "priority"){
+      const order = ["urgent","high","normal","none"];
+      va = order.indexOf(va);
+      vb = order.indexOf(vb);
+    }
 
-if(va>vb) return currentSort.asc?1:-1;
-if(va<vb) return currentSort.asc?-1:1;
-return 0;
-});
+    if(va > vb) return currentSort.asc ? 1 : -1;
+    if(va < vb) return currentSort.asc ? -1 : 1;
+    return 0;
+  });
 
-sorted.forEach(task=>{
-const blocked=isBlocked(task);
-const tr=document.createElement("tr");
+  sorted.forEach(task=>{
+    const blocked = isBlocked(task);
+    const tr = document.createElement("tr");
 
-tr.innerHTML=`
-<td>${task.id}</td>
-<td>${task.name}</td>
-<td>${task.priority}</td>
-<td>${blocked?"unavailable":task.state}</td>
-<td>${task.dependsOn??""}</td>
-<td><span class="menu" onclick="menu(${task.id})">...</span></td>
-`;
+    tr.innerHTML = `
+      <td>${task.id}</td>
+      <td>${task.name}</td>
+      <td>${task.priority}</td>
+      <td>${blocked ? "unavailable" : task.state}</td>
+      <td>${task.dependsOn ?? ""}</td>
+      <td><span class="menu" onclick="menu(${task.id})">...</span></td>
+    `;
 
-tbody.appendChild(tr);
-});
+    tbody.appendChild(tr);
+  });
 }
 
 function renderKanban(){
-document.querySelectorAll(".column").forEach(c=>{
-c.querySelectorAll(".card").forEach(el=>el.remove());
-});
+  document.querySelectorAll(".column").forEach(c=>{
+    c.querySelectorAll(".card").forEach(el=>el.remove());
+  });
 
-tasks.forEach(task=>{
-if(isBlocked(task)) return;
+  tasks.forEach(task=>{
+    if(isBlocked(task)) return;
 
-const column=document.querySelector(`.column[data-state="${task.state}"]`);
-if(!column) return;
+    const column = document.querySelector(`.column[data-state="${task.state}"]`);
+    if(!column) return;
 
-const card=document.createElement("div");
-card.className=`card priority-${task.priority}`;
-card.draggable=true;
-card.dataset.id=task.id;
-card.innerHTML=`<strong>#${task.id}</strong> ${task.name}`;
+    const card = document.createElement("div");
+    card.className = `card priority-${task.priority}`;
+    card.draggable = true;
+    card.dataset.id = task.id;
+    card.innerHTML = `<strong>#${task.id}</strong> ${task.name}`;
 
-card.addEventListener("dragstart",e=>{
-e.dataTransfer.setData("text/plain",String(task.id));
-});
+    card.addEventListener("dragstart", e=>{
+      e.dataTransfer.setData("text/plain", String(task.id));
+    });
 
-column.appendChild(card);
-});
+    column.appendChild(card);
+  });
 }
 
 /* ================= DRAG & DROP ================= */
 
 function initDragDrop(){
+  document.querySelectorAll(".column").forEach(column=>{
 
-document.querySelectorAll(".column").forEach(column=>{
+    column.addEventListener("dragover", e=>{
+      e.preventDefault();
+      column.style.background = "#eef2ff";
+    });
 
-column.addEventListener("dragover",e=>{
-e.preventDefault();
-column.style.background="#eef2ff";
-});
+    column.addEventListener("dragleave", ()=>{
+      column.style.background = "white";
+    });
 
-column.addEventListener("dragleave",()=>{
-column.style.background="white";
-});
+    column.addEventListener("drop", e=>{
+      e.preventDefault();
+      column.style.background = "white";
 
-column.addEventListener("drop",e=>{
-e.preventDefault();
-column.style.background="white";
+      const idStr = e.dataTransfer.getData("text/plain");
+      if(!idStr) return;
 
-const idStr=e.dataTransfer.getData("text/plain");
-if(!idStr) return;
+      const taskId = Number(idStr);
+      const task = tasks.find(t=>t.id === taskId);
+      if(!task) return;
 
-const taskId=Number(idStr);
-const task=tasks.find(t=>t.id===taskId);
-if(!task) return;
+      task.state = column.dataset.state;
+      render();
+    });
 
-task.state=column.dataset.state;
-render();
-});
-
-});
-
+  });
 }
 
 /* ================= SORT ================= */
 
 function sortBy(key){
-if(currentSort.key===key) currentSort.asc=!currentSort.asc;
-else currentSort={key,asc:true};
-render();
+  if(currentSort.key === key) currentSort.asc = !currentSort.asc;
+  else currentSort = { key, asc: true };
+  render();
 }
 
 /* ================= VIEW ================= */
 
 function switchView(view){
-listView.style.display=view==="list"?"block":"none";
-kanbanView.style.display=view==="kanban"?"block":"none";
+  listView.style.display = view === "list" ? "block" : "none";
+  kanbanView.style.display = view === "kanban" ? "block" : "none";
 
-listBtn.classList.toggle("active",view==="list");
-kanbanBtn.classList.toggle("active",view==="kanban");
+  listBtn.classList.toggle("active", view === "list");
+  kanbanBtn.classList.toggle("active", view === "kanban");
 }
 
 /* ================= MODAL ================= */
 
 function openModal(task=null){
-modal.style.display="flex";
+  modal.style.display = "flex";
 
-if(task){
-modalTitle.innerText="Modifier tâche";
-taskId.value=task.id;
-taskName.value=task.name;
-taskPriority.value=task.priority;
-taskState.value=task.state;
-taskDepends.value=task.dependsOn??"";
-}else{
-modalTitle.innerText="Nouvelle tâche";
-taskId.value="";
-taskName.value="";
-taskPriority.value="normal";
-taskState.value="next";
-taskDepends.value="";
-}
+  if(task){
+    modalTitle.innerText = "Modifier tâche";
+    taskId.value = task.id;
+    taskName.value = task.name;
+    taskPriority.value = task.priority;
+    taskState.value = task.state;
+    taskDepends.value = task.dependsOn ?? "";
+  }else{
+    modalTitle.innerText = "Nouvelle tâche";
+    taskId.value = "";
+    taskName.value = "";
+    taskPriority.value = "normal";
+    taskState.value = "next";
+    taskDepends.value = "";
+  }
 }
 
 function closeModal(){
-modal.style.display="none";
+  modal.style.display = "none";
 }
 
 function saveTask(){
-const id=taskId.value;
+  const id = taskId.value;
 
-const task={
-id:id?Number(id):generateId(),
-name:taskName.value,
-priority:taskPriority.value,
-state:taskState.value,
-dependsOn:taskDepends.value?Number(taskDepends.value):null
-};
+  const task = {
+    id: id ? Number(id) : generateId(),
+    name: taskName.value,
+    priority: taskPriority.value,
+    state: taskState.value,
+    dependsOn: taskDepends.value ? Number(taskDepends.value) : null
+  };
 
-if(id){
-tasks=tasks.map(t=>t.id===task.id?task:t);
-}else{
-tasks.push(task);
-}
+  if(id){
+    tasks = tasks.map(t=>t.id === task.id ? task : t);
+  }else{
+    tasks.push(task);
+  }
 
-closeModal();
-render();
+  closeModal();
+  render();
 }
 
 /* ================= MENU ================= */
 
 function menu(id){
-const action=prompt("d = supprimer | m = modifier");
+  const action = prompt("d = supprimer | m = modifier");
 
-if(action==="d"){
-tasks=tasks.filter(t=>t.id!==id);
+  if(action === "d"){
+    tasks = tasks.filter(t=>t.id !== id);
+  }
+
+  if(action === "m"){
+    const task = tasks.find(t=>t.id === id);
+    openModal(task);
+    return;
+  }
+
+  render();
 }
 
-if(action==="m"){
-const task=tasks.find(t=>t.id===id);
-openModal(task);
-return;
-}
+/* ================= INIT ================= */
 
-render();
-}
+loadTasks();   // 🔥 charge depuis la base locale
+render();      // affiche
 
-render();
 </script>
 
 </body>
