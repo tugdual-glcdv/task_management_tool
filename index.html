@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Task Manager</title>
+
+<style>
+:root{
+  --bg:#f4f6fb;
+  --card:#ffffff;
+  --primary:#6366f1;
+  --danger:#ef4444;
+  --text:#1f2937;
+  --border:#e5e7eb;
+}
+
+body{
+  margin:0;
+  font-family:system-ui;
+  background:var(--bg);
+  color:var(--text);
+}
+
+/* HEADER */
+header{
+  background:var(--card);
+  padding:15px 30px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  box-shadow:0 2px 8px rgba(0,0,0,0.05);
+}
+
+button{
+  border:none;
+  padding:8px 14px;
+  border-radius:8px;
+  cursor:pointer;
+  font-weight:500;
+}
+
+.primary{background:var(--primary);color:white;}
+.danger{background:var(--danger);color:white;}
+
+/* VIEW SWITCH */
+.view-switch button{
+  background:#e5e7eb;
+  margin-right:8px;
+}
+.view-switch .active{
+  background:var(--primary);
+  color:white;
+}
+
+.container{padding:30px;}
+
+/* TABLE */
+table{
+  width:100%;
+  border-collapse:collapse;
+  background:white;
+  border-radius:12px;
+  overflow:hidden;
+  box-shadow:0 4px 12px rgba(0,0,0,0.05);
+}
+
+th,td{
+  padding:14px;
+  border-bottom:1px solid var(--border);
+  text-align:left;
+}
+
+th{cursor:pointer;background:#f9fafb;}
+tr:hover{background:#f3f4f6;}
+.menu{cursor:pointer;font-weight:bold;}
+
+/* KANBAN */
+.kanban{
+  display:flex;
+  gap:20px;
+}
+
+.column{
+  flex:1;
+  background:white;
+  border-radius:12px;
+  padding:15px;
+  min-height:400px;
+  box-shadow:0 4px 12px rgba(0,0,0,0.05);
+}
+
+.column h3{margin-top:0;}
+
+.card{
+  padding:12px;
+  margin-bottom:10px;
+  border-radius:8px;
+  background:white;
+  box-shadow:0 2px 6px rgba(0,0,0,0.08);
+  cursor:grab;
+}
+
+.priority-urgent{border-left:6px solid #ef4444;}
+.priority-high{border-left:6px solid #f97316;}
+.priority-normal{border-left:6px solid #3b82f6;}
+.priority-none{border-left:6px solid #9ca3af;}
+
+/* MODAL */
+.modal{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.4);
+  display:none;
+  justify-content:center;
+  align-items:center;
+}
+
+.modal-content{
+  background:white;
+  padding:25px;
+  border-radius:12px;
+  width:400px;
+}
+
+.modal-content input,
+.modal-content select{
+  width:100%;
+  padding:8px;
+  margin-bottom:10px;
+  border-radius:6px;
+  border:1px solid var(--border);
+}
+
+.actions{text-align:right;}
+</style>
+</head>
+<body>
+
+<header>
+<h2>Task Manager</h2>
+
+<div>
+  <div class="view-switch">
+    <button id="listBtn" class="active" onclick="switchView('list')">Liste</button>
+    <button id="kanbanBtn" onclick="switchView('kanban')">Kanban</button>
+  </div>
+
+  <button class="primary" onclick="openModal()">+ Ajouter</button>
+</div>
+</header>
+
+<div class="container">
+
+<!-- LIST VIEW -->
+<div id="listView">
+<table>
+<thead>
+<tr>
+<th onclick="sortBy('id')">ID</th>
+<th onclick="sortBy('name')">Nom</th>
+<th onclick="sortBy('priority')">Priorité</th>
+<th onclick="sortBy('state')">État</th>
+<th onclick="sortBy('dependsOn')">Dépend</th>
+<th></th>
+</tr>
+</thead>
+<tbody id="taskTable"></tbody>
+</table>
+</div>
+
+<!-- KANBAN -->
+<div id="kanbanView" style="display:none;">
+<div class="kanban">
+<div class="column" data-state="next"><h3>Next</h3></div>
+<div class="column" data-state="ongoing"><h3>Ongoing</h3></div>
+<div class="column" data-state="to test"><h3>To Test</h3></div>
+<div class="column" data-state="done"><h3>Done</h3></div>
+</div>
+</div>
+
+</div>
+
+<!-- MODAL -->
+<div class="modal" id="modal">
+<div class="modal-content">
+<h3 id="modalTitle">Nouvelle tâche</h3>
+
+<input type="hidden" id="taskId">
+<input type="text" id="taskName" placeholder="Nom">
+
+<select id="taskPriority">
+<option value="urgent">Urgent</option>
+<option value="high">High</option>
+<option value="normal">Normal</option>
+<option value="none">None</option>
+</select>
+
+<select id="taskState">
+<option value="next">Next</option>
+<option value="ongoing">Ongoing</option>
+<option value="to test">To Test</option>
+<option value="done">Done</option>
+</select>
+
+<input type="number" id="taskDepends" placeholder="ID dépendance (optionnel)">
+
+<div class="actions">
+<button onclick="closeModal()">Annuler</button>
+<button class="primary" onclick="saveTask()">Sauvegarder</button>
+</div>
+
+</div>
+</div>
+
+<script>
+
+let tasks=[];
+let currentSort={key:"id",asc:true};
+
+function generateId(){
+return tasks.length?Math.max(...tasks.map(t=>t.id))+1:1;
+}
+
+function isBlocked(task){
+if(!task.dependsOn) return false;
+const dep=tasks.find(t=>t.id===task.dependsOn);
+if(!dep) return false;
+return !(dep.state==="to test"||dep.state==="done");
+}
+
+/* ================= RENDER ================= */
+
+function render(){
+renderTable();
+renderKanban();
+initDragDrop();
+}
+
+function renderTable(){
+const tbody=document.getElementById("taskTable");
+tbody.innerHTML="";
+
+let sorted=[...tasks].sort((a,b)=>{
+let va=a[currentSort.key]??"";
+let vb=b[currentSort.key]??"";
+
+if(currentSort.key==="priority"){
+const order=["urgent","high","normal","none"];
+va=order.indexOf(va);
+vb=order.indexOf(vb);
+}
+
+if(va>vb) return currentSort.asc?1:-1;
+if(va<vb) return currentSort.asc?-1:1;
+return 0;
+});
+
+sorted.forEach(task=>{
+const blocked=isBlocked(task);
+const tr=document.createElement("tr");
+
+tr.innerHTML=`
+<td>${task.id}</td>
+<td>${task.name}</td>
+<td>${task.priority}</td>
+<td>${blocked?"unavailable":task.state}</td>
+<td>${task.dependsOn??""}</td>
+<td><span class="menu" onclick="menu(${task.id})">...</span></td>
+`;
+
+tbody.appendChild(tr);
+});
+}
+
+function renderKanban(){
+document.querySelectorAll(".column").forEach(c=>{
+c.querySelectorAll(".card").forEach(el=>el.remove());
+});
+
+tasks.forEach(task=>{
+if(isBlocked(task)) return;
+
+const column=document.querySelector(`.column[data-state="${task.state}"]`);
+if(!column) return;
+
+const card=document.createElement("div");
+card.className=`card priority-${task.priority}`;
+card.draggable=true;
+card.dataset.id=task.id;
+card.innerHTML=`<strong>#${task.id}</strong> ${task.name}`;
+
+card.addEventListener("dragstart",e=>{
+e.dataTransfer.setData("text/plain",String(task.id));
+});
+
+column.appendChild(card);
+});
+}
+
+/* ================= DRAG & DROP ================= */
+
+function initDragDrop(){
+
+document.querySelectorAll(".column").forEach(column=>{
+
+column.addEventListener("dragover",e=>{
+e.preventDefault();
+column.style.background="#eef2ff";
+});
+
+column.addEventListener("dragleave",()=>{
+column.style.background="white";
+});
+
+column.addEventListener("drop",e=>{
+e.preventDefault();
+column.style.background="white";
+
+const idStr=e.dataTransfer.getData("text/plain");
+if(!idStr) return;
+
+const taskId=Number(idStr);
+const task=tasks.find(t=>t.id===taskId);
+if(!task) return;
+
+task.state=column.dataset.state;
+render();
+});
+
+});
+
+}
+
+/* ================= SORT ================= */
+
+function sortBy(key){
+if(currentSort.key===key) currentSort.asc=!currentSort.asc;
+else currentSort={key,asc:true};
+render();
+}
+
+/* ================= VIEW ================= */
+
+function switchView(view){
+listView.style.display=view==="list"?"block":"none";
+kanbanView.style.display=view==="kanban"?"block":"none";
+
+listBtn.classList.toggle("active",view==="list");
+kanbanBtn.classList.toggle("active",view==="kanban");
+}
+
+/* ================= MODAL ================= */
+
+function openModal(task=null){
+modal.style.display="flex";
+
+if(task){
+modalTitle.innerText="Modifier tâche";
+taskId.value=task.id;
+taskName.value=task.name;
+taskPriority.value=task.priority;
+taskState.value=task.state;
+taskDepends.value=task.dependsOn??"";
+}else{
+modalTitle.innerText="Nouvelle tâche";
+taskId.value="";
+taskName.value="";
+taskPriority.value="normal";
+taskState.value="next";
+taskDepends.value="";
+}
+}
+
+function closeModal(){
+modal.style.display="none";
+}
+
+function saveTask(){
+const id=taskId.value;
+
+const task={
+id:id?Number(id):generateId(),
+name:taskName.value,
+priority:taskPriority.value,
+state:taskState.value,
+dependsOn:taskDepends.value?Number(taskDepends.value):null
+};
+
+if(id){
+tasks=tasks.map(t=>t.id===task.id?task:t);
+}else{
+tasks.push(task);
+}
+
+closeModal();
+render();
+}
+
+/* ================= MENU ================= */
+
+function menu(id){
+const action=prompt("d = supprimer | m = modifier");
+
+if(action==="d"){
+tasks=tasks.filter(t=>t.id!==id);
+}
+
+if(action==="m"){
+const task=tasks.find(t=>t.id===id);
+openModal(task);
+return;
+}
+
+render();
+}
+
+render();
+</script>
+
+</body>
+  </html>
